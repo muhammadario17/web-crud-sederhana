@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelola Akun - Web CRUD Sederhana</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main id="dashboardApp" class="container hidden">
+        <header class="topbar">
+            <div class="topbar-title">Kelola Akun</div>
+            <div class="topbar-user">
+                <span>Login sebagai: <strong id="currentUserText">-</strong></span>
+                <button type="button" id="logoutBtn" class="btn btn-secondary btn-sm">Logout</button>
+            </div>
+        </header>
+
+        <section id="editCard" class="card hidden">
+            <h1 id="formTitle">Edit Akun</h1>
+            <div id="editStatus" class="status hidden" role="alert"></div>
+
+            <form id="editForm">
+                <input type="hidden" id="editId" value="">
+
+                <div class="form-group">
+                    <label for="identifier">ID atau Email</label>
+                    <input
+                        id="identifier"
+                        name="identifier"
+                        type="text"
+                        placeholder="contoh: nama@email.com atau ID001"
+                        maxlength="254"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="oldPassword">Password Lama</label>
+                    <input
+                        id="oldPassword"
+                        name="old_password"
+                        type="password"
+                        placeholder="Wajib diisi jika ingin mengganti password"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password Baru (opsional)</label>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Kosongkan jika tidak ingin mengubah password"
+                    >
+                </div>
+
+                <div class="actions">
+                    <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+                    <button type="button" id="cancelBtn" class="btn btn-secondary">Batal</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Daftar Akun Tersimpan</h2>
+            <div id="tableStatus" class="status hidden" role="alert"></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Waktu Dibuat</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <tr>
+                            <td colspan="3" class="empty">Memuat data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const dashboardApp = document.getElementById("dashboardApp");
+        const currentUserText = document.getElementById("currentUserText");
+        const logoutBtn = document.getElementById("logoutBtn");
+        const editCard = document.getElementById("editCard");
+        const editForm = document.getElementById("editForm");
+        const formTitle = document.getElementById("formTitle");
+        const editIdInput = document.getElementById("editId");
+        const identifierInput = document.getElementById("identifier");
+        const oldPasswordInput = document.getElementById("oldPassword");
+        const passwordInput = document.getElementById("password");
+        const cancelBtn = document.getElementById("cancelBtn");
+        const editStatus = document.getElementById("editStatus");
+        const tableStatus = document.getElementById("tableStatus");
+        const tableBody = document.getElementById("userTableBody");
+
+        function showStatus(box, type, message) {
+            box.textContent = message;
+            box.className = "status " + type;
+        }
+
+        function hideStatus(box) {
+            box.textContent = "";
+            box.className = "status hidden";
+        }
+
+        function redirectToLogin() {
+            window.location.replace("index.html");
+        }
+
+        function closeEditForm() {
+            editIdInput.value = "";
+            editForm.reset();
+            hideStatus(editStatus);
+            editCard.classList.add("hidden");
+        }
+
+        function startEdit(user) {
+            hideStatus(editStatus);
+            hideStatus(tableStatus);
+            editIdInput.value = String(user.id);
+            identifierInput.value = user.identifier;
+            oldPasswordInput.value = "";
+            passwordInput.value = "";
+            formTitle.textContent = "Edit Akun #" + user.id;
+            editCard.classList.remove("hidden");
+            identifierInput.focus();
+        }
+
+        async function verifySession() {
+            try {
+                const res = await fetch("api.php?action=me");
+                if (res.status === 401) {
+                    redirectToLogin();
+                    return false;
+                }
+                const data = await res.json();
+                if (!res.ok || !data.user) {
+                    redirectToLogin();
+                    return false;
+                }
+                currentUserText.textContent = data.user.identifier;
+                dashboardApp.classList.remove("hidden");
+                return true;
+            } catch {
+                redirectToLogin();
+                return false;
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch("api.php");
+                if (res.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                const data = await res.json();
+                if (!res.ok) {
+                    showStatus(tableStatus, "err", data.error || "Gagal memuat data dari database.");
+                    renderTable([]);
+                    return;
+                }
+                renderTable(data.users || []);
+            } catch {
+                showStatus(tableStatus, "err", "Gagal terhubung ke server PHP/XAMPP.");
+            }
+        }
+
+        function renderTable(users) {
+            tableBody.replaceChildren();
+            if (users.length === 0) {
+                const tr = document.createElement("tr");
+                const td = document.createElement("td");
+                td.colSpan = 3;
+                td.className = "empty";
+                td.textContent = "Belum ada akun tersimpan.";
+                tr.appendChild(td);
+                tableBody.appendChild(tr);
+                return;
+            }
+
+            for (const user of users) {
+                const tr = document.createElement("tr");
+
+                const tdIdentifier = document.createElement("td");
+                tdIdentifier.textContent = user.identifier;
+
+                const tdCreated = document.createElement("td");
+                tdCreated.textContent = user.created_at;
+
+                const tdActions = document.createElement("td");
+                const actionWrap = document.createElement("div");
+                actionWrap.className = "action-cell";
+
+                const editBtn = document.createElement("button");
+                editBtn.type = "button";
+                editBtn.className = "btn btn-sm btn-edit";
+                editBtn.textContent = "Edit";
+                editBtn.addEventListener("click", () => startEdit(user));
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "btn btn-sm btn-delete";
+                deleteBtn.textContent = "Hapus";
+                deleteBtn.addEventListener("click", () => deleteUserById(user.id));
+
+                actionWrap.append(editBtn, deleteBtn);
+                tdActions.appendChild(actionWrap);
+                tr.append(tdIdentifier, tdCreated, tdActions);
+                tableBody.appendChild(tr);
+            }
+        }
+
+        async function deleteUserById(id) {
+            if (!confirm("Yakin ingin menghapus akun ini?")) {
+                return;
+            }
+            hideStatus(tableStatus);
+            try {
+                const res = await fetch("api.php?id=" + encodeURIComponent(id), {
+                    method: "DELETE",
+                });
+                if (res.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                const data = await res.json();
+                if (!res.ok) {
+                    showStatus(tableStatus, "err", data.error || "Gagal menghapus akun.");
+                    return;
+                }
+                if (data.logged_out) {
+                    redirectToLogin();
+                    return;
+                }
+                if (editIdInput.value === String(id)) {
+                    closeEditForm();
+                }
+                showStatus(tableStatus, "ok", data.message);
+                await loadUsers();
+            } catch {
+                showStatus(tableStatus, "err", "Terjadi kesalahan saat menghapus akun.");
+            }
+        }
+
+        editForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            hideStatus(editStatus);
+            const editingId = editIdInput.value;
+            if (!editingId) {
+                return;
+            }
+
+            const oldPassword = oldPasswordInput.value;
+            const newPassword = passwordInput.value;
+
+            if (newPassword !== "" && oldPassword === "") {
+                showStatus(editStatus, "err", "Password lama wajib diisi sebelum mengganti password baru.");
+                oldPasswordInput.focus();
+                return;
+            }
+            if (oldPassword !== "" && newPassword === "") {
+                showStatus(editStatus, "err", "Password baru wajib diisi jika ingin mengganti password.");
+                passwordInput.focus();
+                return;
+            }
+
+            try {
+                const res = await fetch("api.php?id=" + encodeURIComponent(editingId), {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        identifier: identifierInput.value.trim(),
+                        old_password: oldPassword,
+                        password: newPassword,
+                    }),
+                });
+                if (res.status === 401) {
+                    redirectToLogin();
+                    return;
+                }
+                const data = await res.json();
+                if (!res.ok) {
+                    showStatus(editStatus, "err", data.error || "Gagal memperbarui akun.");
+                    return;
+                }
+
+                const meRes = await fetch("api.php?action=me");
+                if (meRes.ok) {
+                    const meData = await meRes.json();
+                    if (meData.user) {
+                        currentUserText.textContent = meData.user.identifier;
+                    }
+                }
+
+                closeEditForm();
+                showStatus(tableStatus, "ok", data.message);
+                await loadUsers();
+            } catch {
+                showStatus(editStatus, "err", "Gagal terhubung ke server PHP/XAMPP.");
+            }
+        });
+
+        logoutBtn.addEventListener("click", async () => {
+            try {
+                await fetch("api.php?action=logout", { method: "POST" });
+            } finally {
+                redirectToLogin();
+            }
+        });
+
+        cancelBtn.addEventListener("click", closeEditForm);
+
+        (async () => {
+            const ok = await verifySession();
+            if (ok) {
+                await loadUsers();
+            }
+        })();
+    </script>
+</body>
+</html>
